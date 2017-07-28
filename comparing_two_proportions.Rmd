@@ -38,7 +38,7 @@ pre {
 
 ## 1.0 Introduction
 
-The [General Social Survey (GSS)](http://gss.norc.org/) is a sociological survey used to collect data on a wide variety of demographic characteristics and attitudes of residents of the United States. The data has been collected since 1972, approximately every 2 years, by the [National Opinion Research Center (NORC)](http://www.norc.org/Pages/default.aspx) at the University of Chicago. The latest data is from the spring of 2016. The data for the each year the survey was carried out can be found [here](http://gss.norc.org/get-the-data/stata) in STATA format, and [here](http://gss.norc.org/get-the-data/spss) in SPSS format. The [GSS Codebook](http://gss.norc.org/Get-Documentation), in PDF format, documents the survey data for all years.
+The [General Social Survey (GSS)](http://gss.norc.org/) is a sociological survey used to collect data on a wide variety of demographic characteristics and attitudes of residents of the United States. The data has been collected since 1972, approximately every 2 years, by the [National Opinion Research Center (NORC)](http://www.norc.org/Pages/default.aspx) at the University of Chicago. The latest data is from the spring of 2016. The data for the each year the survey was carried out can be found [here](http://gss.norc.org/get-the-data/stata) in STATA format, and [here](http://gss.norc.org/get-the-data/spss) in SPSS format. The [GSS Codebook](http://gss.norc.org/Get-Documentation), in PDF format, documents the survey data for all years. The R notebook can be found in the project's [Github page](https://github.com/carlosror/stat-inf-comparing-two-proportions).
 
 ## 2.0 Variables of interest
 
