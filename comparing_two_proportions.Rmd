@@ -1,0 +1,442 @@
+---
+title: "Comparing two population proportions"
+output: 
+  html_notebook:
+    toc: true
+    toc_depth: 5
+    toc_float: true
+---
+
+<style type="text/css">
+
+body, td {
+   font-size: 18px;
+}
+h1 {
+  font-size: 32px;
+  font-weight: bold;
+}
+h2 {
+  font-size: 28px;
+  font-weight: bold;
+}
+h3 {
+  font-size: 24px;
+  font-weight: bold;
+}
+h4 {
+  font-size: 20px;
+  font-weight: bold;
+}
+code.r{
+  font-size: 16px;
+}
+pre {
+  font-size: 16px
+}
+</style>
+
+## 1.0 Introduction
+
+The [General Social Survey (GSS)](http://gss.norc.org/) is a sociological survey used to collect data on a wide variety of demographic characteristics and attitudes of residents of the United States. The data has been collected since 1972, approximately every 2 years, by the [National Opinion Research Center (NORC)](http://www.norc.org/Pages/default.aspx) at the University of Chicago. The latest data is from the spring of 2016. The data for the each year the survey was carried out can be found [here](http://gss.norc.org/get-the-data/stata) in STATA format, and [here](http://gss.norc.org/get-the-data/spss) in SPSS format. The [GSS Codebook](http://gss.norc.org/Get-Documentation), in PDF format, documents the survey data for all years.
+
+## 2.0 Variables of interest
+
+This notebook is about making inferences about the true difference in proportion of gun ownership between two populations: Americans who don't live within a 1-mile radius of an area they fear, and Americans who do. The survey's interviewer asked respondents: **"Do you happen to have in your home any guns or revolvers?"**, and coded the response as $OWNGUN$. Respondents were also asked: **"Is there any area right around here--that is, within a mile--where you would be afraid to walk alone at night?"**, and their reponse was coded as $FEAR$.
+
+## 3.0 Reading the data
+
+The R library [**foreign**](https://cran.r-project.org/web/packages/foreign/foreign.pdf) allows R to read in STATA files, among others. We can then get the variable we want as a single columns vector.
+
+```{r, message=FALSE, warning=FALSE}
+library(foreign) # Used to read STATA (*.DTA) files
+gss2016 <- read.dta("GSS2016.DTA") # read the file
+gss2016_gun_fear <- gss2016[c("owngun", "fear")] # only need two fields
+
+summary(gss2016_gun_fear)
+```
+
+The NA's consiste of people to whom the questions were not posed. We can remove them from both columns.
+
+```{r}
+gss2016_gun_fear <- gss2016_gun_fear[!is.na(gss2016_gun_fear$owngun) & !is.na(gss2016_gun_fear$fear),]
+
+summary(gss2016_gun_fear)
+```
+
+Now compute the proportion of gun ownership among the two populations
+```{r}
+# Number who don't live near an area they fear but own gun
+n_nofear_owngun <- nrow(gss2016_gun_fear[gss2016_gun_fear$fear == "no" & gss2016_gun_fear$owngun == "yes",])
+
+# Total who don't live near an area they fear
+n_1 <- nrow(gss2016_gun_fear[gss2016_gun_fear$fear == "no",])
+
+# Point estimate of proportion who don't live in area they fear but own gun
+p_hat1 <- n_nofear_owngun / n_1
+
+# Number who do live near an area they fear and own gun
+n_fear_owngun <- nrow(gss2016_gun_fear[gss2016_gun_fear$fear == "yes" & gss2016_gun_fear$owngun == "yes",])
+
+# Total who do live near an area they fear
+n_2 <- nrow(gss2016_gun_fear[gss2016_gun_fear$fear == "yes",])
+
+# Proportion who do live in area they fear and own gun
+p_hat2 <- n_fear_owngun / n_2
+
+p_diff_hat <- p_hat1 - p_hat2
+
+cat("Proportion of people who own guns who don't live in an area they fear:", p_hat1, "\nProportion of people who own guns who live near an area they fear:", p_hat2, "\nDifference between the 2 proportions:", p_diff_hat)
+```
+
+So the point estimate of the proportion of gun ownership is higher among those who *don't* live near an area they fear. I would have guessed the opposite.
+
+### 3.1 Summarizing the data
+
+We can tabulate the data from the two populations so that subsequent computations are easier to follow.
+
+```{r}
+# Number who don't live near an area they fear and don't own gun
+n_nofear_nogun <- nrow(gss2016_gun_fear[gss2016_gun_fear$fear == "no" & gss2016_gun_fear$owngun == "no",])
+
+# Number who don't live near an area they fear and refused to answer
+n_nofear_refused <- nrow(gss2016_gun_fear[gss2016_gun_fear$fear == "no" & gss2016_gun_fear$owngun == "refused",])
+
+# Number who do live near an area they fear but don't own gun
+n_fear_nogun <- nrow(gss2016_gun_fear[gss2016_gun_fear$fear == "yes" & gss2016_gun_fear$owngun == "no",])
+
+# Number who do live near an area they fear and refused to answer
+n_fear_refused <- nrow(gss2016_gun_fear[gss2016_gun_fear$fear == "yes" & gss2016_gun_fear$owngun == "refused",])
+
+# Creating one column for each population
+n_nofear <- c(n_nofear_owngun, n_nofear_nogun, n_nofear_refused, n_1, p_hat1)
+n_fear <- c(n_fear_owngun, n_fear_nogun, n_fear_refused, n_2, p_hat2)
+
+summary_df <- data.frame(n_nofear, n_fear) # creating df
+rownames(summary_df) <- c("Own gun", "Don't own gun", "Refused to answer", "Total", "Estimate of proportion of gun ownership")
+colnames(summary_df) <- c("No Fear", "Fear")
+summary_df
+```
+
+The "No Fear" population is comprised of respondents who don't live near an area they fear; the "Fear" population is comprised of those that do.
+
+## 4.0 $95\%$ confidence interval of the difference in population proportions of gun ownership
+
+We can compute a $95\%$ condifence interval for the true difference in proportion of gun ownership, $p_{diff}$, between Americans who don't live near an area they fear, and those that do, by using the [Central Limit Theorem (CLT)](http://www.stat.wmich.edu/s160/book/node43.html). The CLT says that the sampling distribution of a statistic, in this case a difference between two population proportions, is approximately normal, with the true difference, $p_{diff}$, as its mean, and the standard error of the sample, $SE=\sqrt{\frac{p_1\cdot (1-p_1)}{n_1} + \frac{p_2\cdot (1-p_2)}{n_2}}$, as its standard deviation, where $n_1$ and $n_2$ are the sizes of each set of samples. 
+
+
+$$
+\hat{p}_{diff}\sim\ N(mean = p_{diff}, sd=\sqrt{\frac{p_1\cdot (1-p_1)}{n_1} + \frac{p_2\cdot (1-p_2)}{n_2}})
+$$
+
+If we were able to draw many samples from both populations (Americans who don't live nearby an area they fear, and those that do), and computed the difference in proportions between each two-sample set, $\hat{p}_{diff}=\hat{p_1}-\hat{p_2}$, the CLT says the distribution of that proportion difference is nearly normal. Since we typically don't know either $p_1$ or $p_2$, the true population proportions of gun ownership, we will use their point estimates $\hat{p}_1$ and $\hat{p}_2$ as proxies for the purposes of computing the standard error $SE_{(\hat{p}_1 - \hat{p}_2)}$ of the $95\%$ confidence interval.
+
+In reality, we can only draw one sample from the population. We typically don't know the true proportions of gun ownership of the two populations, $p_1$ and $p_2$. We also don't know where the difference in sample proportions we have drawn, $\hat{p}_{diff}=\hat{p_1}-\hat{p_2}$, falls in the sampling distribution, but from the CLT, we do know that the proportions of $95\%$ of the samples drawn will fall within $1.96\cdot \sqrt{\frac{p_1\cdot (1-p_1)}{n_1} + \frac{p_2\cdot (1-p_2)}{n_2}}=1.96\cdot SE$ of $p_{diff}$. For $95\%$ of the samples we draw, an interval within $1.96\cdot \sqrt{\frac{\hat{p}_1\cdot (1-\hat{p}_1)}{n_1} + \frac{\hat{p}_2\cdot (1-\hat{p}_2)}{n_2}}=1.96\cdot SE_{(\hat{p}_1 - \hat{p}_2)}$ of $\hat{p}_{diff}$ will include the true difference in proportion between the two populations. For any two-sample set whose difference in proportions estimate $\hat{p}_{diff}$ falls within $1.96\cdot SE$ of $p_{diff}$, which will happen $95\%$ of the time, we are $95\%$ confident that an interval centered around $\hat{p}_{diff}$ and within $1.96\cdot SE_{(\hat{p}_1 - \hat{p}_2)}$ of $\hat{p}_{diff}$ will contain the true difference in proportions of the two populations.
+
+**$95\%$ confidence interval of the difference in population proportions of gun ownership:**
+
+$$
+\hat{p}_{diff} \pm 1.96\cdot SE_{(\hat{p}_1 - \hat{p}_2)} = \hat{p}_{diff} \pm 1.96\cdot \sqrt{\frac{\hat{p}_1\cdot (1-\hat{p}_1)}{n_1} + \frac{\hat{p}_2\cdot (1-\hat{p}_2)}{n_2}}
+$$
+
+### 4.1 An example
+
+It is much easier to understand with an actual example and a plot. Suppose we have two populations with true proportions $p_1=0.6$ and $p_2=0.5$, and so a true difference in proportions of $p_{diff}=p_1-p_2=0.1$ between them, and we draw a sample of size $n_1=n_2=500$ from each population. Per the CLT, the distribution of the difference in sample proportions taken from those two populations is approximately normal: $\hat{p}_{diff}\sim\ N(mean = 0.1, sd=\sqrt{\frac{0.6\cdot (1-0.6)}{500} + \frac{0.5\cdot (1-0.5)}{500}}=0.0313)$. Any two-sample set drawn from the two populations whose difference in proportions estimate $\hat{p}_{diff}$ falls within $(0.1-1.96\cdot0.0313,\ 0.1+1.96\cdot0.0313)=(0.0387,\ 0.1613)$ will have a $95\%$ confidence interval that contains the true difference in population proportions, $p=0.1$. If we draw a sample from each population, and the samples' proportions are $\hat{p}_1=0.5833$ and $\hat{p}_2=0.4375$, and so their difference is $\hat{p}_{diff}=0.1458$, the $95\%$ confidence interval centered around $\hat{p}_{diff}=0.1458$ will contain the true difference in proportions $p_{diff}=0.1$. Since the person taking the samples typically doesn't know either $p_1$ or $p_2$, she will use her samples' $\hat{p}_1=0.5833$ and $\hat{p}_2=0.4375$ to compute $SE_{(\hat{p}_1 - \hat{p}_2)}$, for the purposes of computing the $95\%$ confidence interval. $SE_{(\hat{p}_1 - \hat{p}_2)}$ will be: $SE_{(\hat{p}_1 - \hat{p}_2)}=\sqrt{\frac{0.5833\cdot (1-0.5833)}{500} + \frac{0.4375\cdot (1-0.4375)}{500}}=\sqrt{4.861e-4+4.9219e-4}=0.0313$, and the $95\%$ confidence interval will be: $(0.1458-1.96\cdot0.0313,\ 0.1458+1.96\cdot0.0313)=(0.0845,\ 0.2071)$, which contains the true proportion difference $p_{diff}=0.1$.
+
+```{r, echo=FALSE}
+#http://www.statmethods.net/advgraphs/probability.html
+
+n_1_example <- 500; n_2_example <- 500
+p_1 <- 0.60; p_2 <- 0.50; p_diff <- p_1 - p_2
+se <- sqrt(p_1 * (1 - p_1) / n_1_example + p_2 * (1 - p_2) / n_2_example)
+
+# x = p_diff +/- 4 std_dev's
+x <- seq(-4,4,length=1000)*se + p_diff
+hx <- dnorm(x, p_diff ,se)
+
+# Values used to shade areas under the curve
+upper_bound <- p_diff + 1.96 * se 
+lower_bound <- p_diff - 1.96 * se 
+
+plot(x, hx, type="n", xlab = "", ylab="", main="Sampling distribution of a difference in proportions", axes=FALSE)
+
+i <- x >= upper_bound & x <= max(x) # indexes of x where x >= upper_bound
+lines(x, hx) # plots normal distribution
+polygon(c(upper_bound,x[i],max(x)), c(0,hx[i],0), col="grey") # shades area grey where x >= upper_bound
+
+j <- x >= min(x) & x <= lower_bound # indexes of x where x <= than lower_bound
+polygon(c(min(x),x[j],lower_bound), c(0,hx[j],0), col="grey") # shades area grey where x <= lower_bound
+
+axis(1, at=seq(0.00, 0.2, 0.02), pos=0) # draws axis
+abline(v=p_diff)
+grid()
+
+p_1_hat <- 0.5833; p_2_hat <- 0.4375; p_diff_hat_example <- 0.1458
+se_p_diff_hat <- sqrt(p_1_hat * (1 - p_1_hat) / n_1_example + p_2_hat * (1 - p_2_hat) / n_2_example)
+axis(1, at=c(p_diff_hat_example - 1.96 * se_p_diff_hat, p_diff_hat_example, p_diff_hat_example + 1.96 * se_p_diff_hat), pos=-2.5, col = "blue", lwd = 2, lwd.ticks = 1) 
+
+text(x = 0.015, y = 11, labels = expression(paste(p[diff], " = 0.1")))
+text(x = 0.02, y = 10, labels = expression(paste(n[1], " = ", n[2],  " = 500")))
+text(x = 0.02, y = 9, labels = expression(paste(SE, " = 0.0313")))
+text(x = 0.021, y = 8, labels = expression(paste(hat(p)[diff], " = 0.1458")))
+text(x = 0.025, y = 6.5, labels = expression(paste(SE[hat(p)[1]-hat(p)[2]], " = 0.0313")))
+```
+
+If we are unlucky and  draw samples whose difference in proportions $\hat{p}_{diff}$ falls in the shaded area, which should only happen $5\%$ of the time, its $95\%$ confidence interval will not include the true difference in proportions $p_{diff}=0.1$.
+
+```{r, echo=FALSE}
+n_1_example <- 500; n_2_example <- 500
+p_1 <- 0.60; p_2 <- 0.50; p_diff <- p_1 - p_2
+se <- sqrt(p_1 * (1 - p_1) / n_1_example + p_2 * (1 - p_2) / n_2_example)
+
+# x = p_diff +/- 4 std_dev's
+x <- seq(-4,4,length=1000)*se + p_diff
+hx <- dnorm(x, p_diff ,se)
+
+# Values used to shade areas under the curve
+upper_bound <- p_diff + 1.96 * se 
+lower_bound <- p_diff - 1.96 * se 
+
+plot(x, hx, type="n", xlab = "", ylab="", main="Sampling distribution of a difference in proportions", axes=FALSE)
+
+i <- x >= upper_bound & x <= max(x) # indexes of x where x >= upper_bound
+lines(x, hx) # plots normal distribution
+polygon(c(upper_bound,x[i],max(x)), c(0,hx[i],0), col="grey") # shades area grey where x >= upper_bound
+
+j <- x >= min(x) & x <= lower_bound # indexes of x where x <= than lower_bound
+polygon(c(min(x),x[j],lower_bound), c(0,hx[j],0), col="grey") # shades area grey where x <= lower_bound
+
+axis(1, at=seq(0.00, 0.2, 0.02), pos=0) # draws axis
+abline(v=p_diff)
+grid()
+
+p_1_hat <- 0.51; p_2_hat <- 0.48; p_diff_hat_example <- 0.03
+se_p_diff_hat <- sqrt(p_1_hat * (1 - p_1_hat) / n_1_example + p_2_hat * (1 - p_2_hat) / n_2_example)
+axis(1, at=c(p_diff_hat_example - 1.96 * se_p_diff_hat, p_diff_hat_example, p_diff_hat_example + 1.96 * se_p_diff_hat), pos=-2.5, col = "red", lwd = 2, lwd.ticks = 1) 
+
+text(x = 0.015, y = 11, labels = expression(paste(p[diff], " = 0.1")))
+text(x = 0.02, y = 10, labels = expression(paste(n[1], " = ", n[2],  " = 500")))
+text(x = 0.02, y = 9, labels = expression(paste(SE, " = 0.0313")))
+text(x = 0.017, y = 8, labels = expression(paste(hat(p)[diff], " = 0.03")))
+text(x = 0.026, y = 6.5, labels = expression(paste(SE[hat(p)[1]-hat(p)[2]], " = 0.0316")))
+```
+
+
+
+### 4.2 Conditions for the confidence interval
+
+The conditions for the validity of the confidence interval are:
+
+1. Sampled observations must be independent, both within groups and between groups.
+
+2. Each sample should have at least 10 successses and 10 failures:
+
+$$
+n_1\cdot\hat{p}_1\geq10\ and\ n_2\cdot(1 - \hat{p}_2)\geq10
+$$
+
+$$
+n_2\cdot\hat{p}_2\geq10\ and\ n_2\cdot(1 - \hat{p}_2)\geq10
+$$
+
+To verify the first part of the first assumption, that sampled observations must be independent within groups, we check that the sampled respondents within each group (those who don't live within 1 mile of an area they fear, and those that do) are randomly sampled, and each of the two samples was done without replacement, and each sample represents less than $10\%$ of their respective populations. E.g., for the group from the population who don't live near an area they fear, the number of observations, about $1300$, is certainly much less than $10\%$ of the entire U.S. population who don't live near an area they fear.
+
+To verify the second part of the first assumption, we note that any respondent from the no-fear sample is independent from any respondent from the fear sample.
+
+Now we check the validity of the second assumption by verifying the success-failure conditions for both samples:
+
+```{r}
+sample_1_successes <- n_1 * p_hat1
+sample_1_failures <- n_1 * (1 - p_hat1)
+
+sample_2_successes <- n_2 * p_hat2
+sample_2_failures <- n_2 * (1 - p_hat2)
+
+cat("Number of successes in the first sample:", floor(sample_1_successes), "\nNumber of failures in the first sample:", floor(sample_1_failures), "\nNumber of successes in the second sample:", floor(sample_2_successes), "\nNumber of failures in the second sample:", floor(sample_2_failures))
+```
+
+
+### 4.3 Critical value $z^*$
+
+The $z^*$ corresponding to a $95\%$ confidence interval in the [standard normal distribution](https://www.mathsisfun.com/data/standard-normal-distribution-table.html) is approximately 1.96. We can compute it more exactly using R:
+
+```{r}
+z_star <- qnorm(p = 0.025, mean = 0, sd = 1, lower.tail = FALSE)
+z_star
+```
+
+### 4.4 Standard error
+
+Computing the standard error of the sample
+```{r}
+se <- sqrt(p_hat1 * (1 - p_hat1) / n_1 + p_hat2 * (1 - p_hat2) / n_2)
+cat("Standard error of the sample:", se)
+```
+
+### 4.5 Confidence interval
+
+Computing the confidence interval bounds
+```{r}
+conf_int_lb <- p_diff_hat - z_star * se
+conf_int_ub <- p_diff_hat + z_star * se
+cat("Confidence interval lower bound", conf_int_lb, "\nConfidence interval upper bound", conf_int_ub)
+```
+<br>
+
+Hence, our confidence interval is
+$$
+0.0901\pm 1.96\cdot 0.0222=(0.0466, 0.1334)
+$$
+
+We are $95\%$ confident that the true difference between the two population proportions is between $0.0466$ and $0.1334$.
+
+## 5.0 Hypothesis testing
+
+We can use the CLT and the data collected to construct a hypothesis testing framework. The hypothesis test considers two possible interpretations of our data, a null hypothesis $H_0$, and an alternative hypothesis $H_a$. $H_0$ basically says that the sampled data could have been drawn simply by chance, and so, it is misleading. There is "nothing going on". $H_a$ takes the view that the data collected reveals that "something *is* going on". We will either reject the null hypothesis in favor of this alternative, or we will fail to reject it and conclude the sampled data could have been drawn simply by chance. Note that even if we fail to reject $H_0$, that does not mean we accept it as the ground truth, it's just that the data we have collected does not allows us to discard $H_0$.
+
+Suppose we want to find out if the $0.0901$ difference in population proportions is statistically significant. Our null hypothesis $H_0$ is:
+
+$$
+H_0: The\ true\ difference\ in\ the\ two\ population\ proportions\ p_1-p_2= p_{diff}=0
+\\
+H_a: p_{diff}\neq 0
+$$
+
+To perform the test, we assume that $H_0$ is true and ask, given that $H_0$ is true, how probable it is to observe data as extreme or more as the one we have.
+
+### 5.1 The null hypothesis proportion $p_{pool}$
+
+Under the null hypothesis $H_0$, we assume the true population proportions $p_1$ and $p_2$ are the same, but what are they equal to? In other words, $p_1=p_2=?$ The standard error formula under $H_0$ should use a common value rather for $p$ rather than the $2$ estimates $\hat p_1$ and $\hat p_2$, given that we are arguing that $p_1=p_2$. A good point estimate for this common value can be obtained by *pooling* the "successes" from both samples. In this case, the successes are the respondents from both groups that live in a place where guns are kept.
+
+$$
+\hat{p}_{pool}=\frac{total\ number\ of\ respondents\ who\ own\ guns}{n_1 + n_2}
+$$
+
+Computing $\hat{p}_{pool}$
+```{r}
+p_pooled <- (n_nofear_owngun + n_fear_owngun) / (n_1 + n_2)
+cat("Estimate of pooled proportion:", p_pooled)
+```
+
+
+The standard error can then be computed similarly as before:
+
+$$
+SE_{pooled}=\sqrt{\frac{\hat{p}_{pooled}\cdot (1-\hat{p}_{pooled})}{n_1} + \frac{\hat{p}_{pooled}\cdot (1-\hat{p}_{pooled})}{n_2}}
+$$
+
+Computing $SE_{pooled}$:
+```{r}
+se_pooled <- sqrt(p_pooled * (1 - p_pooled) / n_1 + p_pooled * (1 - p_pooled) / n_2)
+cat("Standard error under null hypothesis using pooled proportion estimate:", se_pooled)
+```
+
+### 5.2 Conditions for hypothesis testing
+
+The conditions to perform the hypothesis test are similar to the ones we checked to compute the confidence interval.
+
+1. Sampled observations must be independent, both within groups and between groups.
+
+2. Each sample should have at least 10 successses and 10 failures. We use the pooled proportion $\hat{p}_{pool}$ to compute the numbers of successes and failures:
+
+$$
+n_1\cdot\hat{p}_{pool}\geq10\ and\ n_1\cdot(1 - \hat{p}_{pool})\geq10
+$$
+
+$$
+n_2\cdot\hat{p}_{pool}\geq10\ and\ n_2\cdot(1 - \hat{p}_{pool})\geq10
+$$
+
+Verifying the success-failure conditions for hypothesis testing:
+```{r}
+sample_1_successes <- n_1 * p_pooled
+sample_1_failures <- n_1 * (1 - p_pooled)
+
+sample_2_successes <- n_2 * p_pooled
+sample_2_failures <- n_2 * (1 - p_pooled)
+
+cat("Success-failure conditions for hypothesis testing, using p_pooled:", "\nNumber of successes in the first sample:", floor(sample_1_successes), "\nNumber of failures in the first sample:", floor(sample_1_failures), "\nNumber of successes in the second sample:", floor(sample_2_successes), "\nNumber of failures in the second sample:", floor(sample_2_failures))
+```
+
+### 5.3 The p-value
+
+We have to ask ourselves, given that the null hypothesis $H_0$ is true, what is the probability of observing data as extreme or more as the one we have?
+
+$$
+P(observing\ data\ as\ extreme\ or\ more\ |\ H_{0}\ is\ true)
+$$
+
+That probability is the p-value.
+
+Our hypothesis test is two-sided. The null hypothesis is that $p_{diff}=0$, so by asking what is the probability of $observing\ data\ as\ extreme\ or\ more$ in a world in which the null hypothesis is true, we are wondering how probable it is to draw a sample with a difference in proportions of $0.0901$ or higher like the one we have drawn, or one with a difference in proportions of $-0.0901$ or lower. Let's see it graphically.
+
+```{r}
+#http://www.statmethods.net/advgraphs/probability.html
+
+p_diff <- 0.00
+
+# x = p_diff +/- 5 std_dev's
+x <- seq(-5,5,length=1000)*se_pooled + p_diff
+hx <- dnorm(x, p_diff, se_pooled)
+
+# Values used to shade area under curve
+lb <- p_diff_hat; ub <- max(x)
+
+plot(x, hx, type="n", xlab="Difference in proportion of gun ownership between\n those who don't live near an area they fear, and those that do", ylab="", main="Sampling distribution under null hypothesis", axes=FALSE)
+
+lines(x, hx) # plots normal distribution
+
+i <- x >= lb & x <= ub # indexes of x where x >= than lb
+polygon(c(lb,x[i],ub), c(0,hx[i],0), col="red") # shades area where x >= p_diff_hat in red
+
+lines(x[i], hx[i], lwd = 4, col = "red") # "shades area" where x >= p_diff_hat in red
+# in reality it's just drawing a thicker red line on top of the original
+# since shading using the polygon() function will show nothing b/c the area is so small
+
+j <- x >= min(x) & x <= -lb # indexes of x where x <= -pdiff_hat
+
+lines(x[j], hx[j], lwd = 4, col = "red") # "shades area" where x <= -p_diff_hat in red
+# in reality it's just drawing a thicker red line on top of the original
+# since shading using the polygon() function will show nothing b/c the area is so small
+
+axis(1, at=seq(-0.12, 0.12, 0.01), pos=0) # draws axis
+abline(v=p_diff)
+grid()
+```
+
+We are asking how probable it is to draw a sample with a difference in proportions that is $0.0901$ or more away from the assumed difference in proportions (under the null hypothesis) of $0$, in either direction. That is, $\frac{0.0901}{0.0230} = 3.92$ standard deviations away from $0$. The probability of that occurring is very small indeed; it is represented by the shaded area in the plot. In reality, I just thickened the line and colored it red since the area is too small to show.
+<br>
+
+Under the null hypothesis, we live in a world in which the sampling distribution of the difference in proportion of gun ownership between two groups is centered at $p_{diff} = 0$ and has a standard deviation of $0.0230$. In such a world, we have drawn a sample where the difference in proportions is $\hat{p}_{diff}=0.0901$. What is the probability of drawing a sample with a difference in proportion $\hat{p}_{diff}$ as high or higher, in either direction, in a world in which the null hypothesis is true?
+
+$$
+P(drawing\ a\ sample\ where\ the\ difference\ in\ population\ proportions\\ is\ as\ large\ or\ larger\ than\ 0.0901 |\ H_{0}\ is\ true)
+\\
+P(\hat{p}_{diff}\ \geq\ 0.0901\ or\ \hat{p}_{diff}\ \leq\ -0.0901 |\ p_{diff} =  0)
+$$
+
+That probability is the area under the sampling distribution shaded in red in the plot (although it is invisible because it is so small). It can be computed using `pnorm()`.
+```{r}
+area <- 2 * pnorm(q = p_diff_hat, mean = p_diff, sd = se_pooled, lower.tail = FALSE)
+# Multiplied by 2 because the hypothesis test is two-sided.
+cat("Our p-value:", area)
+```
+
+
+So our [p-value](https://en.wikipedia.org/wiki/P-value), the probability of drawing a sample with $\hat{p}_{diff}=0.0901$ or higher, or one $\hat{p}_{diff}=-0.0901$ or lower, under the null hypothesis, is about $8.753e-5$. At the $5\%$ significance level, we can reject the null hypothesis because the sample data provides convincing evidence to do so. 
+
+## References
+
+1. Çetinkaya-Rundel, M. ***Data Analysis and Statistical Inference***. Spring 2014. [Coursera](http://www.coursera.org).
+
+2. Diez, D., Barr, C., Çetinkaya-Rundel, M. ***OpenIntro Statistics, Second Edition***. PDF.
+
+3. Navidi, W. ***Statistics for engineers and scientists, Third Edition***. New York: McGraw Hill, 2011.
+
+4. UCLA Institute for Digital Reserach and Education, ***HOW CAN I INCLUDE GREEK LETTERS IN MY PLOT LABELS? | R CODE FRAGMENTS***. Retrieved from [https://stats.idre.ucla.edu](https://stats.idre.ucla.edu/r/codefragments/greek_letters/)
+
+5. Kabacoff, R. ***Probability Plots***. Retrieved from [http://www.statmethods.net](http://www.statmethods.net/advgraphs/probability.html)
+
+6. Carlos Cinelli and Tom, ***Code chunk font size in Rmarkdown with knitr and latex***. Retrieved from [https://stackoverflow.com](https://stackoverflow.com/questions/25646333/code-chunk-font-size-in-rmarkdown-with-knitr-and-latex)
+
+7. DrewConway and Christopher DuBois, ***Getting LaTeX into R Plots***. Retrieved from [https://stackoverflow.com](https://stackoverflow.com/questions/1395105/getting-latex-into-r-plots)
